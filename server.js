@@ -58,6 +58,7 @@ wss.on('connection', ws => {
 
       // --- Always hydrate from Supabase ---
       const currentState = await loadRoomState(roomId);
+      console.log(`This is currentState ${currentState}`)
 
       // --- Ensure player has state (defaults only if brand new) ---
       if (!currentState[playerId]) {
@@ -68,9 +69,11 @@ wss.on('connection', ws => {
       // --- Update state ---
       if (type === 'pos') {
         currentState[playerId].pos = payload.pos;
+        console.log(`This is currentState ${currentState}`)
         await saveRoomState(roomId);
       } else if (type === 'chat') {
         currentState[playerId].lastMessage = payload.text;
+        console.log(`This is currentState ${currentState}`)
         await saveRoomState(roomId);
       }
 
