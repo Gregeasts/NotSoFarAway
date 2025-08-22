@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import React, { useEffect, useRef, } from 'react';
+import { useEffect, useRef, } from 'react';
 import { WebRTCConnection } from './WebRTC';
 
 type Pos = { x:number, y:number };
@@ -53,7 +53,7 @@ export default function Game({ roomId }: { roomId: string }) {
     }
     let mySprite:Phaser.GameObjects.Container, otherSprite:Phaser.GameObjects.Container;
     let cursors:Phaser.Types.Input.Keyboard.CursorKeys;
-    function update(this: Phaser.Scene, t:number, dt:number) {
+    function update(this: Phaser.Scene, _t:number, dt:number) {
       let moved = false;
       const speed = 200;
       if (cursors.left?.isDown) { myPosRef.current.x -= speed*dt/1000; moved=true; }
