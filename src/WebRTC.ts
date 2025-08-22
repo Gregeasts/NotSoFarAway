@@ -11,6 +11,8 @@ export class WebRTCConnection {
   onMessage: (data: GameMessage) => void = () => {};
   roomId: string;
   ws: WebSocket;
+  private messageQueue: SignalMessage[] = [];
+  private wsOpen = false;
 
   constructor(roomId: string) {
     this.roomId = roomId;
@@ -26,21 +28,26 @@ export class WebRTCConnection {
       this.dc.onmessage = e => this.onMessage(JSON.parse(e.data));
     };
 
-    // ICE candidates
     this.pc.onicecandidate = e => {
-    if (e.candidate) {
-        this.sendSignal({
-        type: 'ice',
-        payload: e.candidate.toJSON() // RTCIceCandidateInit
-        });
-    }
+      if (e.candidate) {
+        this.sendSignal({ type: 'ice', payload: e.candidate.toJSON() });
+      }
     };
 
-    // WebSocket for signaling
     this.ws = new WebSocket(import.meta.env.VITE_SIGNALING_SERVER);
+
+    // ✅ Only mark WS open after connection is established
     this.ws.onopen = () => {
+      this.wsOpen = true;
       console.log('Connected to signaling server');
+
+      // Flush queued messages
+      this.messageQueue.forEach(msg => 
+        this.ws.send(JSON.stringify({ ...msg, roomId: this.roomId }))
+      );
+      this.messageQueue = [];
     };
+
     this.ws.onmessage = async e => {
       const { type, payload } = JSON.parse(e.data);
       if (type === 'offer') {
@@ -51,9 +58,8 @@ export class WebRTCConnection {
       } else if (type === 'answer') {
         await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
       } else if (type === 'ice') {
-        try { await this.pc.addIceCandidate(payload); } catch (err) {
-                console.warn('Failed to add ICE candidate:', err);
-            }
+        try { await this.pc.addIceCandidate(payload); } 
+        catch (err) { console.warn('Failed to add ICE candidate:', err); }
       }
     };
   }
@@ -64,8 +70,13 @@ export class WebRTCConnection {
     this.sendSignal({ type:'offer', payload:offer });
   }
 
+  // ✅ Queue signals until WS is open
   sendSignal(msg: SignalMessage) {
-    this.ws.send(JSON.stringify({ ...msg, roomId: this.roomId }));
+    if (this.wsOpen && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ ...msg, roomId: this.roomId }));
+    } else {
+      this.messageQueue.push(msg);
+    }
   }
 
   sendGameData(data: GameMessage) {
