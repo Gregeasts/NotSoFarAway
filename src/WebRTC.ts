@@ -116,12 +116,14 @@ export class WebRTCConnection {
   }
 
   // Send game messages over data channel (pos or chat)
-  sendGameData(data: GameMessage) {
-    
+    sendGameData(data: GameMessage) {
     if (this.dc.readyState === 'open') {
-      this.dc.send(JSON.stringify(data));
-    } else {
-      console.warn('Data channel not open yet, message queued:', data);
+        this.dc.send(JSON.stringify(data));
     }
-  }
+
+    // Forward to server so it can persist
+    if (this.wsOpen && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({ ...data, roomId: this.roomId, playerId: this.playerId }));
+    }
+    }
 }
