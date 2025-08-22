@@ -2,18 +2,51 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import { WebSocketServer } from 'ws';
+import { createClient } from '@supabase/supabase-js';
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// --- Room state ---
-const rooms = {};      // roomId -> [ws1, ws2]
-const roomState = {};  // roomId -> playerId -> { pos, lastMessage }
+// --- Supabase setup ---
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+);
 
-// WebSocket signaling
+// --- In-memory cache for live updates ---
+const rooms = {}; // roomId -> [ws1, ws2]
+const roomState = {}; // roomId -> playerId -> { pos, lastMessage }
+
+// --- Helper functions ---
+async function loadRoomState(roomId) {
+  if (roomState[roomId]) return roomState[roomId]; // already cached
+
+  const { data, error } = await supabase
+    .from('room_state')
+    .select('state')
+    .eq('room_id', roomId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Supabase load error:', error);
+  }
+
+  roomState[roomId] = data ? data.state : {};
+  return roomState[roomId];
+}
+
+async function saveRoomState(roomId) {
+  const state = roomState[roomId] || {};
+  const { error } = await supabase
+    .from('room_state')
+    .upsert({ room_id: roomId, state });
+  if (error) console.error('Supabase save error:', error);
+}
+
+// --- WebSocket signaling ---
 wss.on('connection', ws => {
-  ws.on('message', msg => {
+  ws.on('message', async msg => {
     try {
       const { type, roomId, playerId, payload } = JSON.parse(msg);
 
@@ -21,20 +54,25 @@ wss.on('connection', ws => {
       if (!rooms[roomId]) rooms[roomId] = [];
       if (!rooms[roomId].includes(ws)) rooms[roomId].push(ws);
 
-      if (!roomState[roomId]) roomState[roomId] = {};
+      await loadRoomState(roomId);
+
       if (!roomState[roomId][playerId]) {
         roomState[roomId][playerId] = { pos: { x: 400, y: 300 }, lastMessage: '' };
+        await saveRoomState(roomId);
       }
 
-      // --- Update room state ---
+      // --- Update state ---
       if (type === 'pos') {
         roomState[roomId][playerId].pos = payload.pos;
+        await saveRoomState(roomId);
       } else if (type === 'chat') {
         roomState[roomId][playerId].lastMessage = payload.text;
+        await saveRoomState(roomId);
       }
 
-      // --- Handle join: send current state to new client ---
+      // --- Handle join: send current state ---
       if (type === 'join') {
+        console.log('Player joining:', playerId, 'Room state:', roomState[roomId]);
         ws.send(JSON.stringify({
           type: 'roomState',
           payload: roomState[roomId]
@@ -54,10 +92,9 @@ wss.on('connection', ws => {
   });
 
   ws.on('close', () => {
-    // Remove WS reference but keep player state
+    // Remove WS reference but keep state in memory / database
     for (const roomId in rooms) {
       rooms[roomId] = rooms[roomId].filter(c => c !== ws);
-      // Do not delete roomState: allows reconnect
     }
   });
 });
@@ -72,3 +109,4 @@ app.get('*', (req, res) => {
 // --- Start server ---
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
