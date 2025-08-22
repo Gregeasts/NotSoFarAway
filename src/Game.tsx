@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { WebRTCConnection } from './WebRTC';
 
 type Pos = { x:number, y:number };
 type GameMessage =
   | { type: 'pos'; pos: Pos }
-  | { type: 'chat'; text: string };
+  | { type: 'chat'; text: string, senderId: 'greg' | 'shannon' };
 
 export default function Game({ roomId, playerId }: { roomId:string, playerId:'greg'|'shannon' }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -13,17 +13,26 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
   const myPosRef = useRef<Pos>({ x:400, y:300 });
   const otherPosRef = useRef<Pos>({ x:600, y:300 });
 
+  const [chatInput, setChatInput] = useState('');
+
   useEffect(()=>{
     // Setup WebRTC
     const conn = new WebRTCConnection(roomId, playerId);
     conn.onMessage = (data: GameMessage) => {
       if (data.type === 'pos') otherPosRef.current = data.pos;
+      else if (data.type === 'chat') showBubble(data.senderId, data.text);
     };
     conn.connect();
     connRef.current = conn;
 
     // Phaser Game
     let game: Phaser.Game | null = null;
+
+    let mySprite: Phaser.GameObjects.Container, otherSprite: Phaser.GameObjects.Container;
+    let cursors: Phaser.Types.Input.Keyboard.CursorKeys;
+    let myBubble: Phaser.GameObjects.Text | null = null;
+    let otherBubble: Phaser.GameObjects.Text | null = null;
+
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
       width: window.innerWidth,
@@ -46,7 +55,7 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
         return c;
       };
 
-      // Assign colors based on playerId
+      // Colors based on playerId
       const myColor = playerId==='greg'?0x8fd3ff:0xffbabf;
       const otherColor = playerId==='greg'?0xffbabf:0x8fd3ff;
 
@@ -59,8 +68,30 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
       cursors = this.input.keyboard!.createCursorKeys();
     }
 
-    let mySprite: Phaser.GameObjects.Container, otherSprite: Phaser.GameObjects.Container;
-    let cursors: Phaser.Types.Input.Keyboard.CursorKeys;
+    function showBubble(senderId: 'greg' | 'shannon', text: string) {
+      const isMine = senderId === playerId;
+      const x = isMine ? myPosRef.current.x : otherPosRef.current.x;
+      const y = isMine ? myPosRef.current.y - 50 : otherPosRef.current.y - 50;
+
+      const bubble = game!.scene.scenes[0].add.text(x, y, text, {
+        font: '16px Arial',
+        color: '#000000',
+        backgroundColor: '#ffffff',
+        padding: { left: 5, right: 5, top: 2, bottom: 2 },
+        align: 'center'
+      }).setOrigin(0.5, 1);
+
+      bubble.setInteractive();
+      bubble.on('pointerdown', () => bubble.destroy());
+
+      if (isMine) {
+        myBubble?.destroy();
+        myBubble = bubble;
+      } else {
+        otherBubble?.destroy();
+        otherBubble = bubble;
+      }
+    }
 
     function update(this: Phaser.Scene, _t:number, dt:number) {
       let moved = false;
@@ -79,8 +110,33 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
     }
 
     game = new Phaser.Game(config);
+
     return () => { game?.destroy(true); conn.ws.close(); };
   }, [roomId, playerId]);
 
-  return <div ref={containerRef} style={{width:'100%',height:'100%'}} />;
+  return (
+    <>
+      <div ref={containerRef} style={{width:'100%',height:'100%'}} />
+      <input
+        type="text"
+        placeholder="Type a message..."
+        value={chatInput}
+        onChange={e => setChatInput(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
+            connRef.current.sendGameData({ type:'chat', text: chatInput, senderId: playerId });
+            setChatInput('');
+          }
+        }}
+        style={{
+          position: 'absolute',
+          bottom: 10,
+          left: 10,
+          width: 200,
+          padding: '5px',
+          fontSize: '14px'
+        }}
+      />
+    </>
+  );
 }

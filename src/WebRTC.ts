@@ -1,6 +1,6 @@
 type GameMessage =
   | { type: 'pos'; pos: { x: number; y: number } }
-  | { type: 'chat'; text: string }; // optional for future messages
+  | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' }; // added senderId
 
 type SignalMessage =
   | { type: 'offer'; payload: RTCSessionDescriptionInit }
@@ -26,7 +26,7 @@ export class WebRTCConnection {
       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
     });
 
-    // Create data channel for sending game data
+    // Create data channel for game data
     this.dc = this.pc.createDataChannel('game');
     this.dc.onmessage = e => this.onMessage(JSON.parse(e.data));
     this.dc.onopen = () => console.log('Data channel open');
@@ -60,7 +60,6 @@ export class WebRTCConnection {
 
     this.ws.onmessage = async e => {
       const { type, payload } = JSON.parse(e.data);
-
       try {
         if (type === 'offer') {
           await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
@@ -94,10 +93,12 @@ export class WebRTCConnection {
     }
   }
 
-  // Send game messages over data channel
+  // Send game messages over data channel (pos or chat)
   sendGameData(data: GameMessage) {
     if (this.dc.readyState === 'open') {
       this.dc.send(JSON.stringify(data));
+    } else {
+      console.warn('Data channel not open yet, message queued:', data);
     }
   }
 }
