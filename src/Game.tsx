@@ -115,28 +115,30 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
   }, [roomId, playerId]);
 
   return (
-    <>
-      <div ref={containerRef} style={{width:'100%',height:'100%'}} />
-      <input
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+        <input
         type="text"
         placeholder="Type a message..."
         value={chatInput}
         onChange={e => setChatInput(e.target.value)}
         onKeyDown={e => {
-          if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
+            if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
             connRef.current.sendGameData({ type:'chat', text: chatInput, senderId: playerId });
             setChatInput('');
-          }
+            }
         }}
         style={{
-          position: 'absolute',
-          bottom: 10,
-          left: 10,
-          width: 200,
-          padding: '5px',
-          fontSize: '14px'
+            position: 'absolute',
+            bottom: 10,
+            left: 10,
+            width: 200,
+            padding: '5px',
+            fontSize: '14px',
+            zIndex: 1000,   // make sure it's above Phaser canvas
         }}
-      />
-    </>
-  );
+        />
+    </div>
+    );
+
 }
