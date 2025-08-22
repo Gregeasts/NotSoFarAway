@@ -1,14 +1,16 @@
 import Phaser from 'phaser';
 import { useEffect, useRef, useState } from 'react';
 import { WebRTCConnection } from './WebRTC';
+import nipplejs from 'nipplejs';
 
 type Pos = { x:number, y:number };
 type GameMessage =
   | { type: 'pos'; pos: Pos }
-  | { type: 'chat'; text: string, senderId: 'greg' | 'shannon' };
+  | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' };
 
 export default function Game({ roomId, playerId }: { roomId:string, playerId:'greg'|'shannon' }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const joystickRef = useRef<HTMLDivElement>(null);
   const connRef = useRef<WebRTCConnection|null>(null);
   const myPosRef = useRef<Pos>({ x:400, y:300 });
   const otherPosRef = useRef<Pos>({ x:600, y:300 });
@@ -16,22 +18,23 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
   const [chatInput, setChatInput] = useState('');
 
   useEffect(()=>{
-    // Setup WebRTC
     const conn = new WebRTCConnection(roomId, playerId);
+    const bubbles: Record<'greg'|'shannon', Phaser.GameObjects.Container | null> = { greg: null, shannon: null };
     conn.onMessage = (data: GameMessage) => {
-      if (data.type === 'pos') otherPosRef.current = data.pos;
-      else if (data.type === 'chat') showBubble(data.senderId, data.text);
+      if (data.type === 'pos') {
+        if (playerId === 'greg') otherPosRef.current = data.pos;
+        else myPosRef.current = data.pos;
+      } else if (data.type === 'chat') {
+        showBubble(data.senderId, data.text);
+      }
     };
     conn.connect();
     connRef.current = conn;
 
-    // Phaser Game
     let game: Phaser.Game | null = null;
-
     let mySprite: Phaser.GameObjects.Container, otherSprite: Phaser.GameObjects.Container;
-    let cursors: Phaser.Types.Input.Keyboard.CursorKeys;
-    let myBubble: Phaser.GameObjects.Text | null = null;
-    let otherBubble: Phaser.GameObjects.Text | null = null;
+    let joystick: nipplejs.JoystickManager | null = null;
+    const joystickDirection = { x:0, y:0 };
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
@@ -55,7 +58,6 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
         return c;
       };
 
-      // Colors based on playerId
       const myColor = playerId==='greg'?0x8fd3ff:0xffbabf;
       const otherColor = playerId==='greg'?0xffbabf:0x8fd3ff;
 
@@ -65,44 +67,84 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
       mySprite.setPosition(myPosRef.current.x, myPosRef.current.y);
       otherSprite.setPosition(otherPosRef.current.x, otherPosRef.current.y);
 
-      cursors = this.input.keyboard!.createCursorKeys();
-    }
+      // --- JOYSTICK ---
+      if (joystickRef.current) {
+        joystick = nipplejs.create({
+          zone: joystickRef.current,
+          mode: 'static',
+          position: { left: '100px', bottom: '100px' },
+          color: 'blue',
+          size: 100
+        });
 
-    function showBubble(senderId: 'greg' | 'shannon', text: string) {
-      const isMine = senderId === playerId;
-      const x = isMine ? myPosRef.current.x : otherPosRef.current.x;
-      const y = isMine ? myPosRef.current.y - 50 : otherPosRef.current.y - 50;
+        joystick.on('move', (evt, data) => {
+          if (data && data.vector) {
+            joystickDirection.x = data.vector.x;
+            joystickDirection.y = data.vector.y;
+          }
+        });
 
-      const bubble = game!.scene.scenes[0].add.text(x, y, text, {
-        font: '16px Arial',
-        color: '#000000',
-        backgroundColor: '#ffffff',
-        padding: { left: 5, right: 5, top: 2, bottom: 2 },
-        align: 'center'
-      }).setOrigin(0.5, 1);
-
-      bubble.setInteractive();
-      bubble.on('pointerdown', () => bubble.destroy());
-
-      if (isMine) {
-        myBubble?.destroy();
-        myBubble = bubble;
-      } else {
-        otherBubble?.destroy();
-        otherBubble = bubble;
+        joystick.on('end', () => {
+          joystickDirection.x = 0;
+          joystickDirection.y = 0;
+        });
       }
     }
 
+    function showBubble(senderId: 'greg' | 'shannon', text: string) {
+      const sprite = senderId === 'greg' ? mySprite : otherSprite;
+
+      if (bubbles[senderId]) bubbles[senderId]?.destroy();
+
+      const padding = 20;
+      const maxWidth = 0;
+      const scene = game!.scene.scenes[0];
+
+      const bubbleText = scene.add.text(0, 0, text, {
+        font: '14px Arial',
+        color: '#000000',
+        align: 'center',
+        wordWrap: { width: maxWidth }
+      }).setOrigin(0.5);
+
+      const bubbleBg = scene.add.ellipse(
+        0,
+        0,
+        bubbleText.width + padding * 2,
+        bubbleText.height + padding * 2,
+        0xffffff
+      );
+      bubbleBg.setStrokeStyle(2, 0x000000);
+
+      const bubbleContainer = scene.add.container(sprite.x + 34, sprite.y - 40, [bubbleBg, bubbleText]);
+      bubbleContainer.setDepth(1000);
+      bubbleContainer.setInteractive();
+      bubbleContainer.on('pointerdown', () => bubbleContainer.destroy());
+
+      bubbles[senderId] = bubbleContainer;
+    }
+
     function update(this: Phaser.Scene, _t:number, dt:number) {
-      let moved = false;
       const speed = 200;
-      if (cursors.left?.isDown) { myPosRef.current.x -= speed*dt/1000; moved=true; }
-      if (cursors.right?.isDown) { myPosRef.current.x += speed*dt/1000; moved=true; }
-      if (cursors.up?.isDown) { myPosRef.current.y -= speed*dt/1000; moved=true; }
-      if (cursors.down?.isDown) { myPosRef.current.y += speed*dt/1000; moved=true; }
+      let moved = false;
+
+      // --- MOVE VIA JOYSTICK ---
+      if (joystickDirection.x !== 0 || joystickDirection.y !== 0) {
+        myPosRef.current.x += joystickDirection.x * speed * dt / 1000;
+        myPosRef.current.y -= joystickDirection.y * speed * dt / 1000;
+        moved = true;
+      }
 
       mySprite.setPosition(myPosRef.current.x, myPosRef.current.y);
       otherSprite.setPosition(otherPosRef.current.x, otherPosRef.current.y);
+
+      ['greg', 'shannon'].forEach((id) => {
+        const bubble = bubbles[id as 'greg'|'shannon'];
+        if (bubble) {
+          const target = id === 'greg' ? mySprite : otherSprite;
+          bubble.setPosition(target.x + 34, target.y - 40);
+        }
+      });
 
       if (moved && connRef.current) {
         connRef.current.sendGameData({ type:'pos', pos: myPosRef.current });
@@ -111,34 +153,41 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
 
     game = new Phaser.Game(config);
 
-    return () => { game?.destroy(true); conn.ws.close(); };
+    return () => {
+      game?.destroy(true);
+      conn.ws.close();
+      joystick?.destroy();
+    };
   }, [roomId, playerId]);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-        <input
+      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={joystickRef} style={{ position: 'absolute', bottom: 50, left: 0, width: '200px', height: '200px', zIndex: 1000 }} />
+      <input
         type="text"
         placeholder="Type a message..."
         value={chatInput}
         onChange={e => setChatInput(e.target.value)}
         onKeyDown={e => {
-            if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
-            connRef.current.sendGameData({ type:'chat', text: chatInput, senderId: playerId });
+          if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
+            const message: GameMessage = { type: 'chat', text: chatInput, senderId: playerId };
+            connRef.current.sendGameData(message);
+            connRef.current.onMessage(message); // show local bubble
             setChatInput('');
-            }
+          }
         }}
         style={{
-            position: 'absolute',
-            bottom: 10,
-            left: 10,
-            width: 200,
-            padding: '5px',
-            fontSize: '14px',
-            zIndex: 1000,   // make sure it's above Phaser canvas
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          width: '100%',
+          padding: '30px',
+          fontSize: '16px',
+          boxSizing: 'border-box',
+          zIndex: 1001
         }}
-        />
+      />
     </div>
-    );
-
+  );
 }

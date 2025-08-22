@@ -19,7 +19,7 @@ export default function App() {
     <div style={{width:'100vw',height:'100vh'}}>
       {!joined && (
         <div style={{padding:20}}>
-          <h2>Dragon Duo 🐉</h2>
+          <h2>Not So Far Away ❤️</h2>
           <input
             placeholder="Enter room code"
             value={roomId}
