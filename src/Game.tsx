@@ -3,38 +3,45 @@ import { useEffect, useRef, useState } from 'react';
 import { WebRTCConnection } from './WebRTC';
 import nipplejs from 'nipplejs';
 
-type Pos = { x:number, y:number };
+type Pos = { x: number; y: number };
 type GameMessage =
   | { type: 'pos'; pos: Pos }
   | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' };
 
-export default function Game({ roomId, playerId }: { roomId:string, playerId:'greg'|'shannon' }) {
+export default function Game({ roomId, playerId }: { roomId: string; playerId: 'greg' | 'shannon' }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const joystickRef = useRef<HTMLDivElement>(null);
-  const connRef = useRef<WebRTCConnection|null>(null);
-  const myPosRef = useRef<Pos>({ x:400, y:300 });
-  const otherPosRef = useRef<Pos>({ x:600, y:300 });
+  const connRef = useRef<WebRTCConnection | null>(null);
 
   const [chatInput, setChatInput] = useState('');
 
-  useEffect(()=>{
+  useEffect(() => {
     const conn = new WebRTCConnection(roomId, playerId);
-    const bubbles: Record<'greg'|'shannon', Phaser.GameObjects.Container | null> = { greg: null, shannon: null };
+    conn.connect();
+    connRef.current = conn;
+
+    const bubbles: Record<'greg' | 'shannon', Phaser.GameObjects.Container | null> = { greg: null, shannon: null };
+    const positions: Record<'greg' | 'shannon', Pos> = {
+      greg: { x: 400, y: 300 },
+      shannon: { x: 600, y: 300 }
+    };
+    const sprites: Record<'greg' | 'shannon', Phaser.GameObjects.Container> = { greg: null!, shannon: null! };
+
+    const joystickDirection = { x: 0, y: 0 };
+
+    let game: Phaser.Game | null = null;
+    let joystick: nipplejs.JoystickManager | null = null;
+
     conn.onMessage = (data: GameMessage) => {
       if (data.type === 'pos') {
-        if (playerId === 'greg') otherPosRef.current = data.pos;
-        else myPosRef.current = data.pos;
+        // Update the other player's position
+        const otherId: 'greg' | 'shannon' = playerId === 'greg' ? 'shannon' : 'greg';
+        positions[otherId] = data.pos;
+        sprites[otherId].setPosition(data.pos.x, data.pos.y);
       } else if (data.type === 'chat') {
         showBubble(data.senderId, data.text);
       }
     };
-    conn.connect();
-    connRef.current = conn;
-
-    let game: Phaser.Game | null = null;
-    let mySprite: Phaser.GameObjects.Container, otherSprite: Phaser.GameObjects.Container;
-    let joystick: nipplejs.JoystickManager | null = null;
-    const joystickDirection = { x:0, y:0 };
 
     const config: Phaser.Types.Core.GameConfig = {
       type: Phaser.AUTO,
@@ -49,25 +56,27 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
     function preload(this: Phaser.Scene) {}
 
     function create(this: Phaser.Scene) {
-      const makeDragon = (color:number) => {
-        const c = this.add.container(0,0);
-        const body = this.add.ellipse(0,0,60,40,color);
-        const head = this.add.ellipse(34,-10,30,22,color);
-        const eye = this.add.circle(42,-12,3,0x000000);
+      const makeDragon = (color: number) => {
+        const c = this.add.container(0, 0);
+        const body = this.add.ellipse(0, 0, 60, 40, color);
+        const head = this.add.ellipse(34, -10, 30, 22, color);
+        const eye = this.add.circle(42, -12, 3, 0x000000);
         c.add([body, head, eye]);
         return c;
       };
 
-      const myColor = playerId==='greg'?0x8fd3ff:0xffbabf;
-      const otherColor = playerId==='greg'?0xffbabf:0x8fd3ff;
+      const myColor = playerId === 'greg' ? 0x8fd3ff : 0xffbabf;
+      const otherColor = playerId === 'greg' ? 0xffbabf : 0x8fd3ff;
 
-      mySprite = makeDragon(myColor);
-      otherSprite = makeDragon(otherColor);
+      // Assign sprites
+      sprites[playerId] = makeDragon(myColor);
+      sprites[playerId === 'greg' ? 'shannon' : 'greg'] = makeDragon(otherColor);
 
-      mySprite.setPosition(myPosRef.current.x, myPosRef.current.y);
-      otherSprite.setPosition(otherPosRef.current.x, otherPosRef.current.y);
+      // Set initial positions
+      sprites['greg'].setPosition(positions['greg'].x, positions['greg'].y);
+      sprites['shannon'].setPosition(positions['shannon'].x, positions['shannon'].y);
 
-      // --- JOYSTICK ---
+      // --- Joystick ---
       if (joystickRef.current) {
         joystick = nipplejs.create({
           zone: joystickRef.current,
@@ -92,7 +101,7 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
     }
 
     function showBubble(senderId: 'greg' | 'shannon', text: string) {
-      const sprite = senderId === 'greg' ? mySprite : otherSprite;
+      const sprite = sprites[senderId];
 
       if (bubbles[senderId]) bubbles[senderId]?.destroy();
 
@@ -124,30 +133,33 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
       bubbles[senderId] = bubbleContainer;
     }
 
-    function update(this: Phaser.Scene, _t:number, dt:number) {
+    function update(this: Phaser.Scene, _t: number, dt: number) {
       const speed = 200;
       let moved = false;
 
-      // --- MOVE VIA JOYSTICK ---
+      const myPos = positions[playerId];
+      const mySprite = sprites[playerId];
+
       if (joystickDirection.x !== 0 || joystickDirection.y !== 0) {
-        myPosRef.current.x += joystickDirection.x * speed * dt / 1000;
-        myPosRef.current.y -= joystickDirection.y * speed * dt / 1000;
+        myPos.x += joystickDirection.x * speed * dt / 1000;
+        myPos.y -= joystickDirection.y * speed * dt / 1000;
         moved = true;
       }
 
-      mySprite.setPosition(myPosRef.current.x, myPosRef.current.y);
-      otherSprite.setPosition(otherPosRef.current.x, otherPosRef.current.y);
+      mySprite.setPosition(myPos.x, myPos.y);
 
+      // Update bubbles
       ['greg', 'shannon'].forEach((id) => {
-        const bubble = bubbles[id as 'greg'|'shannon'];
+        const bubble = bubbles[id as 'greg' | 'shannon'];
         if (bubble) {
-          const target = id === 'greg' ? mySprite : otherSprite;
+          const target = sprites[id];
           bubble.setPosition(target.x + 34, target.y - 40);
         }
       });
 
+      // Send movement
       if (moved && connRef.current) {
-        connRef.current.sendGameData({ type:'pos', pos: myPosRef.current });
+        connRef.current.sendGameData({ type: 'pos', pos: myPos });
       }
     }
 
@@ -163,7 +175,17 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
-      <div ref={joystickRef} style={{ position: 'absolute', bottom: 50, left: 0, width: '200px', height: '200px', zIndex: 1000 }} />
+      <div
+        ref={joystickRef}
+        style={{
+          position: 'absolute',
+          bottom: 50,
+          left: 0,
+          width: '200px',
+          height: '200px',
+          zIndex: 1000
+        }}
+      />
       <input
         type="text"
         placeholder="Type a message..."
@@ -191,3 +213,4 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
     </div>
   );
 }
+
