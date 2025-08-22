@@ -5,10 +5,17 @@ import nipplejs from 'nipplejs';
 
 type Pos = { x: number; y: number };
 type GameMessage =
-  | { type: 'pos'; pos: Pos }
-  | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' };
+  | { type: 'pos'; pos: Pos; senderId: 'greg' | 'shannon' }
+  | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' }
+  | { type: 'join'; senderId: 'greg' | 'shannon'; pos: Pos; lastMessage?: string };
 
-export default function Game({ roomId, playerId }: { roomId: string; playerId: 'greg' | 'shannon' }) {
+export default function Game({
+  roomId,
+  playerId,
+}: {
+  roomId: string;
+  playerId: 'greg' | 'shannon';
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const joystickRef = useRef<HTMLDivElement>(null);
   const connRef = useRef<WebRTCConnection | null>(null);
@@ -20,25 +27,30 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
     conn.connect();
     connRef.current = conn;
 
-    const bubbles: Record<'greg' | 'shannon', Phaser.GameObjects.Container | null> = { greg: null, shannon: null };
-    const positions: Record<'greg' | 'shannon', Pos> = {
-      greg: { x: 400, y: 300 },
-      shannon: { x: 600, y: 300 }
-    };
+    // State
+    const positions: Record<'greg' | 'shannon', Pos> = { greg: { x: 400, y: 300 }, shannon: { x: 600, y: 300 } };
+    const lastMessages: Record<'greg' | 'shannon', string> = { greg: '', shannon: '' };
     const sprites: Record<'greg' | 'shannon', Phaser.GameObjects.Container> = { greg: null!, shannon: null! };
+    const bubbles: Record<'greg' | 'shannon', Phaser.GameObjects.Container | null> = { greg: null, shannon: null };
     const joystickDirection = { x: 0, y: 0 };
 
     let game: Phaser.Game | null = null;
     let joystick: nipplejs.JoystickManager | null = null;
 
-    // Handle messages from the other player
+    // Handle incoming messages
     conn.onMessage = (data: GameMessage) => {
       if (data.type === 'pos') {
-        const otherId: 'greg' | 'shannon' = playerId === 'greg' ? 'shannon' : 'greg';
-        positions[otherId] = data.pos;
-        sprites[otherId].setPosition(data.pos.x, data.pos.y);
+        positions[data.senderId] = data.pos;
+        if (sprites[data.senderId]) sprites[data.senderId].setPosition(data.pos.x, data.pos.y);
       } else if (data.type === 'chat') {
+        lastMessages[data.senderId] = data.text;
         showBubble(data.senderId, data.text);
+      } else if (data.type === 'join') {
+        // Late join: sync positions and last messages
+        positions[data.senderId] = data.pos;
+        if (data.lastMessage) lastMessages[data.senderId] = data.lastMessage;
+        if (sprites[data.senderId]) sprites[data.senderId].setPosition(data.pos.x, data.pos.y);
+        if (data.lastMessage) showBubble(data.senderId, data.lastMessage);
       }
     };
 
@@ -49,7 +61,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
       parent: containerRef.current!,
       backgroundColor: '#aee3ff',
       physics: { default: 'arcade' },
-      scene: { preload, create, update }
+      scene: { preload, create, update },
     };
 
     function preload(this: Phaser.Scene) {}
@@ -64,15 +76,18 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
         return c;
       };
 
+      // Create sprites
       const myColor = playerId === 'greg' ? 0x8fd3ff : 0xffbabf;
       const otherColor = playerId === 'greg' ? 0xffbabf : 0x8fd3ff;
-
       sprites[playerId] = makeDragon(myColor);
       sprites[playerId === 'greg' ? 'shannon' : 'greg'] = makeDragon(otherColor);
 
       (['greg', 'shannon'] as const).forEach((id) => {
         sprites[id].setPosition(positions[id].x, positions[id].y);
       });
+
+      // Center camera on local player
+      this.cameras.main.startFollow(sprites[playerId], true, 0.1, 0.1);
 
       // --- Joystick ---
       if (joystickRef.current) {
@@ -81,7 +96,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
           mode: 'static',
           position: { left: '50px', bottom: '50px' },
           color: 'blue',
-          size: 80
+          size: 80,
         });
 
         joystick.on('move', (_evt, data) => {
@@ -95,6 +110,17 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
           joystickDirection.x = 0;
           joystickDirection.y = 0;
         });
+      }
+
+      // --- Notify other clients of join ---
+      if (connRef.current) {
+        const msg: GameMessage = {
+          type: 'join',
+          senderId: playerId,
+          pos: positions[playerId],
+          lastMessage: lastMessages[playerId],
+        };
+        connRef.current.sendGameData(msg);
       }
     }
 
@@ -111,7 +137,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
         font: '14px Arial',
         color: '#000000',
         align: 'center',
-        wordWrap: { width: maxWidth }
+        wordWrap: { width: maxWidth },
       }).setOrigin(0.5);
 
       const bubbleBg = scene.add.ellipse(
@@ -153,10 +179,13 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
         }
       });
 
-      // Send updated position every frame if moved
       if (moved && connRef.current) {
-        connRef.current.sendGameData({ type: 'pos', pos: { ...myPos } });
-      }
+      connRef.current.sendGameData({
+          type: 'pos',
+          pos: { ...myPos },
+          senderId: playerId,
+      });
+    }
     }
 
     game = new Phaser.Game(config);
@@ -179,7 +208,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
           left: 20,
           width: '150px',
           height: '150px',
-          zIndex: 1000
+          zIndex: 1000,
         }}
       />
       <input
@@ -203,7 +232,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
           padding: '20px',
           fontSize: '16px',
           boxSizing: 'border-box',
-          zIndex: 1001
+          zIndex: 1001,
         }}
       />
     </div>

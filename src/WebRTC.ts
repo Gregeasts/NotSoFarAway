@@ -1,6 +1,8 @@
+type Pos = { x: number; y: number };
 type GameMessage =
-  | { type: 'pos'; pos: { x: number; y: number } }
-  | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' }; // added senderId
+  | { type: 'pos'; pos: Pos; senderId: 'greg' | 'shannon' }
+  | { type: 'chat'; text: string; senderId: 'greg' | 'shannon' }
+  | { type: 'join'; senderId: 'greg' | 'shannon'; pos: Pos; lastMessage?: string };
 
 type SignalMessage =
   | { type: 'offer'; payload: RTCSessionDescriptionInit }
@@ -95,6 +97,7 @@ export class WebRTCConnection {
 
   // Send game messages over data channel (pos or chat)
   sendGameData(data: GameMessage) {
+    
     if (this.dc.readyState === 'open') {
       this.dc.send(JSON.stringify(data));
     } else {
