@@ -26,7 +26,6 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
       shannon: { x: 600, y: 300 }
     };
     const sprites: Record<'greg' | 'shannon', Phaser.GameObjects.Container> = { greg: null!, shannon: null! };
-
     const joystickDirection = { x: 0, y: 0 };
 
     let game: Phaser.Game | null = null;
@@ -34,7 +33,6 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
 
     conn.onMessage = (data: GameMessage) => {
       if (data.type === 'pos') {
-        // Update the other player's position
         const otherId: 'greg' | 'shannon' = playerId === 'greg' ? 'shannon' : 'greg';
         positions[otherId] = data.pos;
         sprites[otherId].setPosition(data.pos.x, data.pos.y);
@@ -73,8 +71,9 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
       sprites[playerId === 'greg' ? 'shannon' : 'greg'] = makeDragon(otherColor);
 
       // Set initial positions
-      sprites['greg'].setPosition(positions['greg'].x, positions['greg'].y);
-      sprites['shannon'].setPosition(positions['shannon'].x, positions['shannon'].y);
+      (['greg', 'shannon'] as const).forEach((id) => {
+        sprites[id].setPosition(positions[id].x, positions[id].y);
+      });
 
       // --- Joystick ---
       if (joystickRef.current) {
@@ -149,8 +148,8 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
       mySprite.setPosition(myPos.x, myPos.y);
 
       // Update bubbles
-      ['greg', 'shannon'].forEach((id) => {
-        const bubble = bubbles[id as 'greg' | 'shannon'];
+      (['greg', 'shannon'] as const).forEach((id) => {
+        const bubble = bubbles[id];
         if (bubble) {
           const target = sprites[id];
           bubble.setPosition(target.x + 34, target.y - 40);
@@ -190,8 +189,8 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
         type="text"
         placeholder="Type a message..."
         value={chatInput}
-        onChange={e => setChatInput(e.target.value)}
-        onKeyDown={e => {
+        onChange={(e) => setChatInput(e.target.value)}
+        onKeyDown={(e) => {
           if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
             const message: GameMessage = { type: 'chat', text: chatInput, senderId: playerId };
             connRef.current.sendGameData(message);
@@ -213,4 +212,3 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
     </div>
   );
 }
-
