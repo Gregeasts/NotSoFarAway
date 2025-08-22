@@ -59,24 +59,37 @@ export class WebRTCConnection {
       );
       this.messageQueue = [];
     };
-
     this.ws.onmessage = async e => {
-      const { type, payload } = JSON.parse(e.data);
-      try {
-        if (type === 'offer') {
-          await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
-          const answer = await this.pc.createAnswer();
-          await this.pc.setLocalDescription(answer);
-          this.sendSignal({ type: 'answer', payload: answer });
-        } else if (type === 'answer') {
-          await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
-        } else if (type === 'ice') {
-          await this.pc.addIceCandidate(payload);
+        const { type, payload, playerId } = JSON.parse(e.data);
+        try {
+            if (type === 'offer') {
+            await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
+            const answer = await this.pc.createAnswer();
+            await this.pc.setLocalDescription(answer);
+            this.sendSignal({ type: 'answer', payload: answer });
+            } else if (type === 'answer') {
+            await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
+            } else if (type === 'ice') {
+            await this.pc.addIceCandidate(payload);
+            } else if (type === 'roomState') {
+            // 📝 give state to game
+            this.onMessage({ type: 'join', senderId: this.playerId, pos: payload[this.playerId].pos, lastMessage: payload[this.playerId].lastMessage });
+            // also give other player’s state
+            const otherId = this.playerId === 'greg' ? 'shannon' : 'greg';
+            if (payload[otherId]?.pos) {
+                this.onMessage({ type: 'join', senderId: otherId, pos: payload[otherId].pos, lastMessage: payload[otherId].lastMessage });
+            }
+            } else if (type === 'pos' || type === 'chat') {
+            // forward to game loop
+            this.onMessage({ type, senderId: playerId, ...payload });
+            }
+        } catch (err) {
+            console.warn('WebRTC error:', err);
         }
-      } catch (err) {
-        console.warn('WebRTC error:', err);
-      }
-    };
+        };
+
+
+
   }
 
   // Start connection by creating an offer

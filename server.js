@@ -8,6 +8,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
 const rooms = {}; // roomId -> [ws1, ws2]
+const roomState = {}; 
 
 // WebSocket signaling
 wss.on('connection', ws => {
@@ -23,6 +24,25 @@ wss.on('connection', ws => {
           client.send(JSON.stringify({ type, payload }));
         }
       });
+       if (type === 'pos' || type === 'chat') {
+        // 📝 store latest state
+        roomState[roomId][playerId] = {
+          ...roomState[roomId][playerId],
+          ...payload
+        };
+      }
+      if (type === 'join') {
+        // 📝 send current room state only to the joining client
+        ws.send(JSON.stringify({
+          type: 'roomState',
+          payload: roomState[roomId]
+        }));
+      }
+      rooms[roomId].forEach(client => {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({ type, playerId, payload }));
+        }
+      });
     } catch (err) {
       console.error('Invalid message', err);
     }
@@ -31,7 +51,7 @@ wss.on('connection', ws => {
   ws.on('close', () => {
     for (const roomId in rooms) {
       rooms[roomId] = rooms[roomId].filter(c => c !== ws);
-      if (rooms[roomId].length === 0) delete rooms[roomId];
+      
     }
   });
 });
