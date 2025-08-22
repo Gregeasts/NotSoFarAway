@@ -77,7 +77,7 @@ export default function Game({ roomId, playerId }: { roomId:string, playerId:'gr
           size: 100
         });
 
-        joystick.on('move', (evt, data) => {
+        joystick.on('move', (_evt, data) => {
           if (data && data.vector) {
             joystickDirection.x = data.vector.x;
             joystickDirection.y = data.vector.y;
