@@ -50,7 +50,7 @@ async function saveRoomState(roomId) {
 wss.on('connection', ws => {
   ws.on('message', async msg => {
     try {
-      const { type, roomId, playerId, payload } = JSON.parse(msg);
+      const { type, roomId, playerId, payload, pos, text } = JSON.parse(msg);
 
       // --- Initialize room ---
       if (!rooms[roomId]) rooms[roomId] = [];
@@ -58,7 +58,7 @@ wss.on('connection', ws => {
 
       // --- Always hydrate from Supabase ---
       const currentState = await loadRoomState(roomId);
-      console.log(`This is currentState ${currentState}`)
+      console.log('Current roomState:', JSON.stringify(currentState, null, 2));
 
       // --- Ensure player has state (defaults only if brand new) ---
       if (!currentState[playerId]) {
@@ -68,19 +68,24 @@ wss.on('connection', ws => {
 
       // --- Update state ---
       if (type === 'pos') {
-        currentState[playerId].pos = payload.pos;
-        console.log(`This is currentState ${currentState}`)
-        await saveRoomState(roomId);
+        const newPos = payload?.pos || pos;
+        if (newPos) {
+          currentState[playerId].pos = newPos;
+          await saveRoomState(roomId);
+          console.log('Updated position:', currentState[playerId].pos);
+        }
       } else if (type === 'chat') {
-        currentState[playerId].lastMessage = payload.text;
-        console.log(`This is currentState ${currentState}`)
-        await saveRoomState(roomId);
+        const newText = payload?.text || text;
+        if (newText !== undefined) {
+          currentState[playerId].lastMessage = newText;
+          await saveRoomState(roomId);
+          console.log('Updated message:', currentState[playerId].lastMessage);
+        }
       }
 
       // --- Handle join: send current state ---
       if (type === 'join') {
         console.log(`🔵 Player ${playerId} joined room ${roomId}`);
-        console.log('📦 Sending roomState:', JSON.stringify(currentState, null, 2));
         ws.send(JSON.stringify({
           type: 'roomState',
           payload: currentState
@@ -90,7 +95,7 @@ wss.on('connection', ws => {
       // --- Broadcast to other clients ---
       rooms[roomId].forEach(client => {
         if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({ type, playerId, payload }));
+          client.send(JSON.stringify({ type, playerId, payload: payload || { pos, text } }));
         }
       });
 
