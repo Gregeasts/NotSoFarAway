@@ -36,16 +36,16 @@ wss.on('connection', ws => {
   });
 });
 
-// Serve React build
+
 const __dirname = path.resolve();
 
+// Serve all static files from the root folder
+app.use(express.static(__dirname));
 
-
-// All other routes should return index.html (for React Router)
+// For any other route, try to serve index.html in the root
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'build', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
-
 // Start server
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
