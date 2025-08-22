@@ -31,6 +31,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
     let game: Phaser.Game | null = null;
     let joystick: nipplejs.JoystickManager | null = null;
 
+    // Handle messages from the other player
     conn.onMessage = (data: GameMessage) => {
       if (data.type === 'pos') {
         const otherId: 'greg' | 'shannon' = playerId === 'greg' ? 'shannon' : 'greg';
@@ -66,11 +67,9 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
       const myColor = playerId === 'greg' ? 0x8fd3ff : 0xffbabf;
       const otherColor = playerId === 'greg' ? 0xffbabf : 0x8fd3ff;
 
-      // Assign sprites
       sprites[playerId] = makeDragon(myColor);
       sprites[playerId === 'greg' ? 'shannon' : 'greg'] = makeDragon(otherColor);
 
-      // Set initial positions
       (['greg', 'shannon'] as const).forEach((id) => {
         sprites[id].setPosition(positions[id].x, positions[id].y);
       });
@@ -80,9 +79,9 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
         joystick = nipplejs.create({
           zone: joystickRef.current,
           mode: 'static',
-          position: { left: '100px', bottom: '100px' },
+          position: { left: '50px', bottom: '50px' },
           color: 'blue',
-          size: 100
+          size: 80
         });
 
         joystick.on('move', (_evt, data) => {
@@ -147,18 +146,16 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
 
       mySprite.setPosition(myPos.x, myPos.y);
 
-      // Update bubbles
       (['greg', 'shannon'] as const).forEach((id) => {
         const bubble = bubbles[id];
         if (bubble) {
-          const target = sprites[id];
-          bubble.setPosition(target.x + 34, target.y - 40);
+          bubble.setPosition(sprites[id].x + 34, sprites[id].y - 40);
         }
       });
 
-      // Send movement
+      // Send updated position every frame if moved
       if (moved && connRef.current) {
-        connRef.current.sendGameData({ type: 'pos', pos: myPos });
+        connRef.current.sendGameData({ type: 'pos', pos: { ...myPos } });
       }
     }
 
@@ -172,16 +169,16 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
   }, [roomId, playerId]);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div style={{ width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' }}>
       <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
       <div
         ref={joystickRef}
         style={{
           position: 'absolute',
-          bottom: 50,
-          left: 0,
-          width: '200px',
-          height: '200px',
+          bottom: 20,
+          left: 20,
+          width: '150px',
+          height: '150px',
           zIndex: 1000
         }}
       />
@@ -194,7 +191,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
           if (e.key === 'Enter' && chatInput.trim() && connRef.current) {
             const message: GameMessage = { type: 'chat', text: chatInput, senderId: playerId };
             connRef.current.sendGameData(message);
-            connRef.current.onMessage(message); // show local bubble
+            connRef.current.onMessage(message);
             setChatInput('');
           }
         }}
@@ -203,7 +200,7 @@ export default function Game({ roomId, playerId }: { roomId: string; playerId: '
           bottom: 0,
           left: 0,
           width: '100%',
-          padding: '30px',
+          padding: '20px',
           fontSize: '16px',
           boxSizing: 'border-box',
           zIndex: 1001
