@@ -37,6 +37,8 @@ export default function Game({
     let game: Phaser.Game | null = null;
     let joystick: nipplejs.JoystickManager | null = null;
 
+    
+
     // Handle incoming messages
     conn.onMessage = (data: GameMessage) => {
       if (data.type === 'pos') {

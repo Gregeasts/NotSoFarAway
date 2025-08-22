@@ -58,6 +58,13 @@ export class WebRTCConnection {
         this.ws.send(JSON.stringify({ ...msg, roomId: this.roomId, playerId: this.playerId }))
       );
       this.messageQueue = [];
+      this.ws.send(JSON.stringify({
+        type: "join",
+        roomId: this.roomId,
+        playerId: this.playerId,
+        pos: { x: 400, y: 300 }, // default spawn (or pass in)
+        lastMessage: ""
+      }));
     };
     this.ws.onmessage = async e => {
         const { type, payload, playerId } = JSON.parse(e.data);

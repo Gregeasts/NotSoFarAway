@@ -73,6 +73,8 @@ wss.on('connection', ws => {
       // --- Handle join: send current state ---
       if (type === 'join') {
         console.log('Player joining:', playerId, 'Room state:', roomState[roomId]);
+        console.log(`🔵 Player ${playerId} joined room ${roomId}`);
+        console.log('📦 Current roomState:', JSON.stringify(roomState[roomId], null, 2));
         ws.send(JSON.stringify({
           type: 'roomState',
           payload: roomState[roomId]
