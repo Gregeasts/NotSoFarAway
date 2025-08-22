@@ -40,11 +40,9 @@ wss.on('connection', ws => {
 const __dirname = path.resolve();
 
 // Serve all static files from the root folder
-app.use(express.static(__dirname));
-
-// For any other route, try to serve index.html in the root
+app.use(express.static(path.join(__dirname, 'dist')));
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 // Start server
 const PORT = process.env.PORT || 3000;
