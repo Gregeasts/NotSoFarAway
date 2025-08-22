@@ -1,6 +1,7 @@
 import express from 'express';
 import http from 'http';
-import WebSocket, { WebSocketServer } from 'ws';
+import path from 'path';
+import { WebSocketServer } from 'ws';
 
 const app = express();
 const server = http.createServer(app);
@@ -8,16 +9,15 @@ const wss = new WebSocketServer({ server });
 
 const rooms = {}; // roomId -> [ws1, ws2]
 
+// WebSocket signaling
 wss.on('connection', ws => {
   ws.on('message', msg => {
     try {
-      const data = JSON.parse(msg);
-      const { type, roomId, payload } = data;
+      const { type, roomId, payload } = JSON.parse(msg);
 
       if (!rooms[roomId]) rooms[roomId] = [];
       if (!rooms[roomId].includes(ws)) rooms[roomId].push(ws);
 
-      // broadcast to the other peer
       rooms[roomId].forEach(client => {
         if (client !== ws && client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({ type, payload }));
@@ -29,7 +29,6 @@ wss.on('connection', ws => {
   });
 
   ws.on('close', () => {
-    // Remove ws from all rooms
     for (const roomId in rooms) {
       rooms[roomId] = rooms[roomId].filter(c => c !== ws);
       if (rooms[roomId].length === 0) delete rooms[roomId];
@@ -37,6 +36,13 @@ wss.on('connection', ws => {
   });
 });
 
-server.listen(process.env.PORT || 3000, () => {
-  console.log('Signaling server running');
+// Serve React build
+const __dirname = path.resolve();
+app.use(express.static(path.join(__dirname, 'client/build')));
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'client/build', 'index.html'));
 });
+
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
