@@ -39,8 +39,7 @@ wss.on('connection', ws => {
 // Serve React build
 const __dirname = path.resolve();
 
-// Serve React build from root "build" folder
-app.use(express.static(path.join(__dirname, 'build')));
+
 
 // All other routes should return index.html (for React Router)
 app.get('*', (req, res) => {
